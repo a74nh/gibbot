@@ -1,0 +1,88 @@
+#!/bin/bash
+##############################################################################
+#
+#   templatebot
+#
+#   An example bot using all interface functions
+#
+#   By Alan Hayward, 2005-2013
+#
+#   Uses gibbot
+#   
+##############################################################################
+
+
+
+##############################################################################
+#Source gibbot and override stuff
+
+BOTPATH=$(dirname $0)
+source $BOTPATH/gibbot >/dev/null
+
+NICK="templatebot"
+MIN_NICK_SIZE=3
+
+USE_ALARMS=1
+
+#always join these channels (plus what is added on the command line)
+list_add "#chat" $CHANNELLIST
+list_add "#bot" $CHANNELLIST
+
+#always ignore these people
+list_add bob $IGNORELIST
+list_add bill $IGNORELIST
+
+##############################################################################
+
+bot_init()
+{
+  bot_set_alarm 30 &
+}
+
+bot_channel_message() #channel, from, Original Message
+{
+  #Message was sent to me
+  CHANNEL=$1; FROM=$2; shift 2
+  bot_channel_say $CHANNEL "$FROM: You just said: $@"
+}
+
+bot_other_channel_message() #channel, from, Original Message
+{
+  #Message was sent, but not to me
+  CHANNEL=$1; FROM=$2; shift 2
+  bot_channel_say $CHANNEL "I think $FROM just said: $@"
+}
+
+bot_private_message() #from, Original Message
+{
+  FROM=$1; shift
+  bot_person_say $FROM "You just privately said: $@"
+}
+
+bot_kicked() #channel, by
+{
+  #Someone kicked me and I have now rejoined.
+  bot_channel_action $1 "shakes his fist at $2"
+}
+
+bot_person_joined() #channel, person
+{
+  #Someone has just entered the channel
+  bot_channel_action $1 "waves at $2"
+}
+
+bot_joined() #channel
+{
+  #I've just entered a channel
+  bot_channel_action $1 "waves at everyone"
+}
+
+bot_alarm_handler()
+{
+  bot_all_channels_say $(rainbowWord "Are we having fun yet?")
+  bot_set_alarm $(random 60) &
+}
+
+##############################################################################
+
+bot_run $0 $@

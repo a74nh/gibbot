@@ -1,0 +1,29 @@
+#!/bin/bash
+##############################################################################
+#
+#   logbot
+#
+#   An irc bot which simply creates logs of everything
+#
+#   By Alan Hayward, 2005-2013
+#
+#   Uses gibbot
+#   
+##############################################################################
+
+
+##############################################################################
+#Source gibbot and override stuff
+
+BOTPATH=$(dirname $0)
+source $BOTPATH/gibbot >/dev/null
+
+NICK="logbot"
+MIN_NICK_SIZE=3
+
+#Really verbose logging
+LOG_LEVEL=$LOG_LEVEL_ALL
+
+##############################################################################
+
+bot_run $0 $@

@@ -1,0 +1,55 @@
+#!/bin/bash
+##############################################################################
+#
+#   rotabot
+#
+#   Launched from crontab (probably once a week),
+#   this bot echoes the latest person on a rota then exits
+#
+#   By Alan Hayward, 2005-2013
+#
+#   Uses gibbot
+#   
+##############################################################################
+
+
+
+##############################################################################
+#Source gibbot and override stuff
+
+BOTPATH=$(dirname $0)
+source $BOTPATH/gibbot >/dev/null
+
+NICK="rotabot"
+MIN_NICK_SIZE=3
+
+USE_ALARMS=1
+
+#always join these channels (plus what is added on the command line)
+list_add "#chat" $CHANNELLIST
+list_add "#bot" $CHANNELLIST
+
+
+##############################################################################
+
+bot_init()
+{
+  #Give the bot enough time to log onto every channel
+  bot_set_alarm 2 &
+}
+
+bot_alarm_handler()
+{
+  #Call out to the rota tool:
+  #local PERSON=rota_get_latest
+  local PERSON=bob
+  
+  local MESSAGE="The next person on the rota is: $PERSON"
+
+  bot_all_channels_say $MESSAGE
+  exit
+}
+
+##############################################################################
+
+bot_run $0 $@
