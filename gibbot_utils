@@ -1,0 +1,214 @@
+#!/bin/bash
+##############################################################################
+#
+#
+echo "
+gibbot utilities for calling in your own script.
+Not directly bot related.
+Do not run directly
+"
+#
+# By Alan Hayward, 2005-2013
+#
+##############################################################################
+
+
+#A binary 1
+BINARY1=$(printf $(printf "\\\\x%c" 1))
+
+
+##############################################################################
+##
+##Colours. Can be echoed to change the text colour
+
+tonum()
+{
+  printf "\\"; printf "x%c" $1;
+}
+COLORCODE="$(tonum 3)"
+
+WHITE="$(printf $COLORCODE)0"
+BLACK="$(printf $COLORCODE)1"
+BLUE="$(printf $COLORCODE)2"
+GREEN="$(printf $COLORCODE)3"
+RED="$(printf $COLORCODE)4"
+BROWN="$(printf $COLORCODE)5"
+PURPLE="$(printf $COLORCODE)6"
+ORANGE="$(printf $COLORCODE)7"
+YELLOW="$(printf $COLORCODE)8"
+LGREEN="$(printf $COLORCODE)9"
+TEAL="$(printf $COLORCODE)10"
+LCYAN="$(printf $COLORCODE)11"
+LBLUE="$(printf $COLORCODE)12"
+PINK="$(printf $COLORCODE)13"
+GREY="$(printf $COLORCODE)14"
+LGREY="$(printf $COLORCODE)15"
+
+##############################################################################
+##
+##rainbowWord
+##Turn each word in the input to a different colour
+
+rainbowWord()
+{
+  WORDS="$*"
+  i=0
+  for WORD in $WORDS
+  do
+    printf " "$WORD" "$(printf $COLORCODE)$((2+(i%13)))
+    i=$((i+1))
+  done
+}
+
+##############################################################################
+##
+##random
+##Produce a random number
+
+random() #topvalue
+{
+  #Produce random number from 0 to $1-1
+  echo $(($RANDOM * $1 / 32767))
+}
+
+##############################################################################
+##
+##phrase_number
+##From a file, output the nth entry (ignoring comments)
+
+phrase_number() #phrasefile
+{
+  local PFILE=$1
+  echo $(grep -v '^#' $PFILE | wc -l)
+}
+
+##############################################################################
+##
+##phrase_random
+##From a file, output a random entry (ignoring comments)
+
+phrase_random() #phrasefile
+{
+  local PFILE=$1
+  local NUM=$(phrase_number $PFILE)
+  grep -v '^#' $PFILE | awk -v x=$(random $NUM) '{ if(x==0){print $0; exit} x--; }' 
+}
+
+
+##############################################################################
+##
+##is_a_link
+##Is the input a web link?
+
+is_a_link() #link
+{
+ if [[ ${1:0:7} = "http://"  || ${1:0:4} = "www." ]]
+ then
+   return 1 #is a link
+ else
+  return 0 #is not a link
+ fi
+}
+
+################################################################################
+##
+##List Functions. Simplifies lists in bash.
+##Each list is just assigned a number which can easily
+##and safely be passed around.
+##
+
+#Current max list number
+list_max=0
+
+##
+##list_new
+##Create a new list and return an id.
+##Example usage:  list_new; mylist=$?
+##
+list_new()
+{
+ RET=$list_max
+ LLIST[$RET]="";
+ list_max=$(($list_max+1));
+ return $RET;
+}
+
+##
+##list_list
+##List all items in a list
+##
+list_list() #listno
+{
+ LIST=(${LLIST[$1]});
+ echo ${LIST[@]};
+}
+
+##
+##list_exists
+##Returns 1 if given item exists in the list
+##
+list_exists() #item, listname
+{
+  LIST=(${LLIST[$2]});
+  for ITEM in ${LIST[@]}
+  do
+    if [ $ITEM = $1 ];
+    then
+      return 1;
+    fi;
+  done;
+  return 0;
+}
+
+##
+##list_add
+##Add an item to a list
+##
+list_add() #item, listname
+{ 
+  list_exists $1 $2; #sanity check first
+  if [ $? -eq 0 ];
+  then
+    LLIST[$2]="${LLIST[$2]} $1";
+    return 1;
+  else
+    return 0;
+  fi;
+}
+
+##
+##list_remove
+##Removes an item to a list
+##
+list_remove() #item, listname
+{
+  list_exists $1 $2; #sanity check first
+  if [ $? -eq 0 ];
+  then
+    return 0;
+  else
+    LIST=(${LLIST[$2]});
+    COUNT=0;
+    while [ 1 ]; #infinite loop!
+    do
+      if [ "${LIST[COUNT]}" = "$1" ];
+      then
+        unset LIST[COUNT];
+      	LLIST[$2]="${LIST[@]}"
+        return 1;
+      fi;
+      COUNT=$((COUNT+1));
+    done;
+  fi;
+}
+
+##
+##list_size
+##Echos the number of items in a list
+##
+list_size() #listno
+{
+  LIST=(${LLIST[$1]})
+  echo ${#LIST[@]}
+}
+

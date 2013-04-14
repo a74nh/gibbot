@@ -1,0 +1,146 @@
+#!/bin/bash
+##############################################################################
+#
+#
+echo "
+gibbot functions for overriding in your own script.
+Do not run directly
+"
+#
+# By Alan Hayward, 2005-2013
+#
+##############################################################################
+
+
+#Default params. Can be overridden on commandline
+
+SERVER=irc              #server to connect to
+NICK="gibbot"           #name of the bot
+USE_SSL=0               #Use ssl (1) or not (0)
+
+
+#Default params. Cannot overridden on commandline
+
+MIN_NICK_SIZE=3          #min number of characters of NICK it will recognise as itself
+
+USE_ALARMS=0             #Allow use of alarms (1) or not (0)
+SIGNAL=63                #Signal to use for alarms
+
+LOG_LEVEL=$LOG_LEVEL_BOT #Logging level to use
+LOGPATH=$BOTPATH/logs    #Directory to log to
+
+PORT=6667                #Port to connect to for non-ssl
+SSL_PORT=6697            #Port to connect to for ssl
+
+
+################################################################################
+##
+##bot_init
+##Called after joining the server,
+##before running any commands or joining any channels
+
+bot_init()
+{
+  return;
+}
+
+
+################################################################################
+##
+##bot_channel_message
+##Called whenever a message is sent on a channel to the bot 
+
+bot_channel_message() #channel, from, Original Message
+{
+  return
+}
+
+
+################################################################################
+##
+##bot_other_channel_message
+##Called whenever a message is sent on a channel, but not to the bot 
+
+bot_other_channel_message() #channel, from, Original Message
+{
+  return
+}
+
+
+################################################################################
+##
+##bot_private_message
+##Called whenever a message is sent on a privately to the bot 
+
+bot_private_message() #from, Original Message
+{
+  return
+}
+
+
+################################################################################
+##
+##bot_exist
+##Called as a result of "bot_whois" if a person exists 
+
+bot_exist() #person
+{
+  return
+}
+
+################################################################################
+##
+##bot_not_exist
+##Called as a result of "bot_whois" if a person does not exist 
+
+bot_not_exist() #person
+{
+  return
+}
+
+
+################################################################################
+##
+##bot_kicked
+##Called whenever the bot is kicked from a channel.
+##Bot will have already tried to rejoin channel
+
+bot_kicked() #channel, by
+{
+  return
+}
+
+
+################################################################################
+##
+##bot_person_joined
+##Called whenever somebody joins a channel.
+
+bot_person_joined() #channel, person
+{
+  return
+}
+
+
+################################################################################
+##
+##bot_joined
+##Called whenever the bot joins a channel.
+
+bot_joined() #channel
+{
+  return
+}
+
+
+################################################################################
+##
+##bot_alarm_handler
+##The alarm has sounded as a result of a previous call to bot_set_alarm
+
+bot_alarm_handler()
+{
+  return
+}
+
+

@@ -1,0 +1,297 @@
+#!/bin/bash
+##############################################################################
+#
+echo "
+Gibbot
+Growable IRC Bash Bot
+Do not run directly
+"
+#
+# By Alan Hayward, 2005-2013
+#
+# USAGE: Set $BOTPATH
+#        Source me into a script.
+#        Overwrite the functions you want from gibbot_overrides.
+#        Call:   bot_run $0 $@
+#
+#
+# For examples see templatebot
+#
+USAGE="$0 [-s server] [-c channel] [-n nick] [-o owner] [-e]"
+#
+##############################################################################
+
+if [ -z "$BOTPATH" ]
+then
+  exit 2
+fi
+
+unset UNIQUE;
+BOT_CONNECTED=0;
+REALOWNER=$(whoami); #privilaged irc user
+source $BOTPATH/gibbot_interface >/dev/null
+source $BOTPATH/gibbot_utils >/dev/null
+source $BOTPATH/gibbot_overrides >/dev/null
+
+list_new; CHANNELLIST=$?
+list_new; IGNORELIST=$?
+
+
+################################################################################
+##OS/machine specific stuff
+
+MACHINE=`uname -m`;
+AWK=awk;
+
+case $MACHINE in
+  sun4u) AWK=nawk;;
+esac
+
+
+################################################################################
+##
+##bot_input_log
+##Write the read input to the relevant logfile
+
+bot_log_input() #level, channel
+{
+  LEVEL=$1; shift
+  
+  if [ $LOG_LEVEL -ge $LEVEL ]
+  then
+    c=${1:-"unknown"}
+    c=${c/\\#/}
+    LOGFILE=$LOGPATH/log_"$NICK"_"$c"_$(date +%Y%m%d)
+    echo $(date +%H:%M:%S])" $input" >> $LOGFILE
+  fi
+}
+
+
+################################################################################
+##
+##bot_cmdline
+##Parse the command line arguments
+##TODO: call out to overridden function for each unrecognised input
+ 
+bot_cmdline() #args...
+{ 
+  while getopts c:n:s:o:e+ line
+  do
+    case $line in
+    +) UNIQUE=1;;  #Important. Do not set on commandline
+    c) list_add '#'$OPTARG $CHANNELLIST;;
+    n) NICK=$OPTARG;;
+    s) SERVER=$OPTARG;;
+    o) REALOWNER=$OPTARG;;
+    e) USE_SSL=0;;
+    *) echo $USAGE; exit 2;;
+    esac
+  done
+}
+
+
+################################################################################
+##
+##bot_parse
+##Parse input read from irc server
+
+bot_parse() #input
+{
+  if [ $# -eq 0 ]
+  then
+    return
+
+  elif [ "$2" = "PRIVMSG" ]
+  then
+    FROM=${1%\!*}
+    FROM=${FROM:1}
+
+    #Am I ignoring you??
+    list_exists $FROM $IGNORELIST;
+    if [ $? -eq 1 ]
+    then
+      return
+    fi
+
+    if [ ${3:0:1} = "#" ] #is the destination a channel or me?
+    then
+      #Message was sent to a channel
+      
+      CHANNEL="$3"
+      if [ "${4:1:$MIN_NICK_SIZE}" = "${NICK:0:$MIN_NICK_SIZE}" ] #are you talking to me?
+      then
+        #Channel message started with name of bot
+	
+        #Remove the trailing 0x1 from the end of the message
+        shift 4; MESSAGE="$@"; LEN=${#MESSAGE};
+        
+        if [ $LEN -lt 1 ] 
+        then
+          LEN=1
+        fi
+        MESSAGE=${MESSAGE:0:$LEN-1};
+        
+	bot_log_input $LOG_LEVEL_BOT $CHANNEL	
+        bot_channel_message $CHANNEL $FROM $MESSAGE
+	
+      else
+        #Channel message did not start with name of bot
+      
+        #Remove the : from the start and the trailing 0x1 from the end of the message
+        shift 3; MESSAGE="$@"; LEN=${#MESSAGE}; MESSAGE=${MESSAGE:1:$LEN-2};
+
+        bot_log_input $LOG_LEVEL_ALL $CHANNEL	
+        bot_other_channel_message $CHANNEL $FROM $FIRSTWORD $MESSAGE
+	
+      fi
+    else
+      #Message was sent privately
+    
+      #Remove the : from the start and the trailing 0x1 from the end of the message
+      shift 3; MESSAGE="$@"; LEN=${#MESSAGE}; MESSAGE=${MESSAGE:1:$LEN-2};
+
+      bot_log_input $LOG_LEVEL_BOT private
+      bot_private_message $FROM $MESSAGE
+    fi
+
+  elif [ "$1" = "PING" ]
+  then
+    bot_log_input $LOG_LEVEL_SYSTEM console
+    bot_echo "PONG" ${2:1}
+
+  elif [ "$2" = "376" ] #end of motd
+  then
+    bot_log_input $LOG_LEVEL_SYSTEM console
+    
+    #now join all the channels
+    for CHANNEL in $(list_list $CHANNELLIST)
+    do
+      bot_join $CHANNEL
+    done
+
+  elif [ "$2" = "311" ] #first line of whois reply pass
+  then
+    bot_log_input $LOG_LEVEL_SYSTEM console
+    bot_exist $4
+
+  elif [[ $2 = "401" && "${7:0:4}" = "nick" ]] #first line of whois reply fail
+  then
+    bot_log_input $LOG_LEVEL_SYSTEM console
+    bot_not_exist $4
+
+  elif [[ "$2" = "KICK" && "$4" = "$NICK" ]]
+  then
+    bot_log_input $LOG_LEVEL_SYSTEM console
+    FROM=${1%\!*}
+    FROM=${FROM:1}
+    bot_join "$3" #rejoin channel
+    bot_kicked "$3" $FROM
+
+  elif [ "$2" = "JOIN" ]
+  then
+    bot_log_input $LOG_LEVEL_SYSTEM console
+    FROM=${1%\!*}
+    FROM=${FROM:1}
+    
+    #Remove the : from the start and the trailing 0x1 from the end of the message
+    CHANNEL=$3; LEN=${#CHANNEL}; CHANNEL=${CHANNEL:1:$LEN-2}
+
+    if [ $FROM = $NICK ]
+    then
+      #Bot just joined a channel
+      bot_joined $CHANNEL;
+    else
+      #Someone else just joined a channel
+      bot_person_joined $CHANNEL $FROM;
+    fi
+
+  else
+    bot_log_input $LOG_LEVEL_ALL console
+  fi
+}
+
+
+################################################################################
+##
+##bot_mainloop
+##The main loop
+
+bot_mainloop()
+{
+  OWNER=$REALOWNER
+  echo "NICK $NICK"
+  echo "USER $NICK B C D"
+
+  PID=$$
+  bot_init
+
+  if [ $USE_ALARMS -gt 0 ]
+  then
+    #Alarm run loop.
+    #Every second break out of the read to check the alarm
+    
+    bot_init_alarm
+    
+    while [ 1 ] 
+    do
+      input=""
+      read -t 1 input
+      bot_parse $input
+      bot_check_for_alarm
+    done
+
+  else
+    #Simple run loop
+
+    while read input
+    do
+      bot_parse $input
+    done
+  
+  fi
+}
+
+
+################################################################################
+##
+##bot_init_alarm
+##Sets up the alarm functionality
+
+bot_init_alarm()
+{
+  ALARM_FILE=.$NICK.alarm
+  rm -f $ALARM_FILE
+
+  trap bot_internal_alarm_handler $SIGNAL
+}
+
+
+################################################################################
+##
+##bot_check_for_alarm
+##If the alarm has sounded, then call the handler
+
+bot_check_for_alarm()
+{
+  #Check for an alarm call
+  if [ -f $ALARM_FILE ]
+  then
+    rm -f $ALARM_FILE
+    bot_alarm_handler
+  fi
+}
+
+
+################################################################################
+##
+##bot_internal_alarm_handler
+##The real signal handler
+
+bot_internal_alarm_handler()
+{
+  #Called when alarm signal is generated
+  #Don't do anything now except create alarm file
+  touch $ALARM_FILE
+}
+
+

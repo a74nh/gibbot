@@ -1,0 +1,185 @@
+#!/bin/bash
+##############################################################################
+#
+#
+echo "
+gibbot functions for calling in your own script.
+Do not run directly
+"
+#
+# By Alan Hayward, 2005-2013
+#
+##############################################################################
+
+
+#Different logging levels
+LOG_LEVEL_ALL=3    #log everything
+LOG_LEVEL_BOT=2    #log everything related to the bot
+LOG_LEVEL_SYSTEM=1 #log system messages from the console
+LOG_LEVEL_NONE=0   #log nothing
+
+################################################################################
+##
+##bot_echo
+##Send a raw irc message to the server
+
+bot_echo() #message
+{
+  echo "$@"
+  
+  if [ $LOG_LEVEL -ge $LOG_LEVEL_BOT ]
+  then
+    LOGFILE=$LOGPATH/log_"$NICK"_reply_$(date +%Y%m%d)
+    echo $(date +%H:%M:%S])" $@" >> $LOGFILE
+  fi
+}
+
+
+################################################################################
+##
+##bot_channel_say
+##Send a text message to a channel
+
+bot_channel_say() #channel, message
+{
+  CHANNEL=$1; shift
+  bot_echo "PRIVMSG $CHANNEL :$@"
+}
+
+
+################################################################################
+##
+##bot_all_channels_say
+##Send a text message to a all channels bot is logged into
+
+bot_all_channels_say() #message
+{
+  for CHANNEL in $(list_list $CHANNELLIST)
+  do
+    bot_echo "PRIVMSG $CHANNEL :$@"
+    sleep 1
+  done
+}
+
+
+################################################################################
+##
+##bot_person_say
+##Send a private text message to a person
+
+bot_person_say() #person, message
+{
+  PERSON=$1; shift
+  bot_echo "PRIVMSG $PERSON :$@"
+}
+
+
+################################################################################
+##
+##bot_channel_action
+##Send a text message action (/me) to a channel
+
+bot_channel_action() #channel, message
+{
+  CHANNEL=$1; shift;
+  bot_echo "PRIVMSG $CHANNEL :"$BINARY1"ACTION $@"$BINARY1;
+}
+
+
+################################################################################
+##
+##bot_person_action
+##Send a private text message action (/me) to a person
+
+bot_person_action() #person, message
+{
+  PERSON=$1; shift;
+  bot_echo "PRIVMSG $PERSON :"$BINARY1"ACTION $@"$BINARY1;
+}
+
+
+################################################################################
+##
+##bot_kick
+##Kick a person from a channel
+
+bot_kick() #channel, person, reason
+{
+  bot_echo "KICK" $@;
+}
+
+
+################################################################################
+##
+##bot_op
+##Give channel ops to a person
+
+bot_op() #channel, person
+{
+  #give someone the ops
+  bot_echo "MODE" $1 "+o" $2;
+}
+
+
+################################################################################
+##
+##bot_join
+##The bot joins a channel
+
+bot_join() #channel
+{
+  bot_echo "JOIN" $1;
+  BOT_CONNECTED=1;
+}
+
+
+################################################################################
+##
+##bot_set_alarm
+##Set the alarm. After given seconds, bot_alarm_handler will be called.
+##Normally this should be called in the background (using &)
+##Multiple alarms can be set
+
+bot_set_alarm() #seconds
+{
+  if [ $USE_ALARMS -gt 0 ]
+  then
+    trap $SIGNAL
+    sleep $1
+    kill -$SIGNAL $PID
+  fi
+}
+
+
+################################################################################
+##
+##bot_whois
+##Results in either bot_exist or bot_not_exist being called
+
+bot_whois() #person
+{
+  bot_echo "WHOIS" $1
+}
+
+
+################################################################################
+##
+##bot_run
+##Start the irc bot
+
+bot_run()
+{
+  EXECLINE="$@ -+"
+  shift
+  bot_cmdline $@
+
+  if [ $UNIQUE ]
+  then
+    bot_mainloop;
+  elif [ $USE_SSL -eq 1 ]
+  then
+    socat EXEC:'openssl s_client -connect '$SERVER'\:'$SSL_PORT EXEC:"$EXECLINE"
+  else
+    socat EXEC:'nc '$SERVER' '$PORT EXEC:"$EXECLINE";
+  fi
+}
