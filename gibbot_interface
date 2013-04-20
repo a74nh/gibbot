@@ -42,7 +42,7 @@ bot_echo() #message
 
 bot_channel_say() #channel, message
 {
-  CHANNEL=$1; shift
+  local CHANNEL=$1; shift
   bot_echo "PRIVMSG $CHANNEL :$@"
 }
 
@@ -69,7 +69,7 @@ bot_all_channels_say() #message
 
 bot_person_say() #person, message
 {
-  PERSON=$1; shift
+  local PERSON=$1; shift
   bot_echo "PRIVMSG $PERSON :$@"
 }
 
@@ -81,8 +81,8 @@ bot_person_say() #person, message
 
 bot_channel_action() #channel, message
 {
-  CHANNEL=$1; shift;
-  bot_echo "PRIVMSG $CHANNEL :"$BINARY1"ACTION $@"$BINARY1;
+  local CHANNEL=$1; shift
+  bot_echo "PRIVMSG $CHANNEL :"$BINARY1"ACTION $@"$BINARY1
 }
 
 
@@ -93,8 +93,8 @@ bot_channel_action() #channel, message
 
 bot_person_action() #person, message
 {
-  PERSON=$1; shift;
-  bot_echo "PRIVMSG $PERSON :"$BINARY1"ACTION $@"$BINARY1;
+  local PERSON=$1; shift
+  bot_echo "PRIVMSG $PERSON :"$BINARY1"ACTION $@"$BINARY1
 }
 
 
@@ -105,7 +105,7 @@ bot_person_action() #person, message
 
 bot_kick() #channel, person, reason
 {
-  bot_echo "KICK" $@;
+  bot_echo "KICK" $@
 }
 
 
@@ -117,19 +117,70 @@ bot_kick() #channel, person, reason
 bot_op() #channel, person
 {
   #give someone the ops
-  bot_echo "MODE" $1 "+o" $2;
+  bot_echo "MODE" $1 "+o" $2
+}
+
+
+################################################################################
+##
+##bot_direct_join
+##The bot joins a channel without any checking
+
+bot_direct_join() #channel
+{
+  bot_echo "JOIN" $1
+}
+
+
+################################################################################
+##
+##bot_leave
+##The bot leaves a channel without any checking
+
+bot_direct_leave() #channel, message
+{
+  local C=$1; shift
+  bot_echo PART $C "$@"
 }
 
 
 ################################################################################
 ##
 ##bot_join
-##The bot joins a channel
+##The bot joins a channel, checking it's not already on it first
 
 bot_join() #channel
 {
-  bot_echo "JOIN" $1;
-  BOT_CONNECTED=1;
+  local LCHANNEL=$1; shift
+  if [ -n "$LCHANNEL" ]
+  then
+    list_exists $LCHANNEL $CHANNELLIST
+    if [ $? -eq 0 ]
+    then
+      bot_direct_join $LCHANNEL
+      list_add $LCHANNEL $CHANNELLIST
+    fi
+  fi
+}
+
+
+################################################################################
+##
+##bot_leave
+##The bot leaves a channel, checking it is already on it first
+
+bot_leave() #channel, message
+{
+  local LCHANNEL=$1; shift
+  if [ -n "$LCHANNEL" ]
+  then
+    list_exists $LCHANNEL $CHANNELLIST
+    if [ $? -eq 1 ]
+    then
+      bot_direct_leave $LCHANNEL $@
+      list_remove $LCHANNEL $CHANNELLIST
+    fi
+  fi
 }
 
 
@@ -175,11 +226,11 @@ bot_run()
 
   if [ $UNIQUE ]
   then
-    bot_mainloop;
+    bot_mainloop
   elif [ $USE_SSL -eq 1 ]
   then
     socat EXEC:'openssl s_client -connect '$SERVER'\:'$SSL_PORT EXEC:"$EXECLINE"
   else
-    socat EXEC:'nc '$SERVER' '$PORT EXEC:"$EXECLINE";
+    socat EXEC:'nc '$SERVER' '$PORT EXEC:"$EXECLINE"
   fi
 }

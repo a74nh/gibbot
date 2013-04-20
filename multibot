@@ -1,0 +1,772 @@
+#!/bin/bash
+##############################################################################
+#
+#   multibot
+#
+#   A multi functional bot providing useful and non-useful functionality
+#
+#   multibot used to live on a office irc server. Many of the functions it relied
+#   on have either been lost or deleted for confidentiality reasons.
+#   For these reasons multibot is a mere shadow of what he once was, however
+#   he lives on here as an example of gibbot usage
+#
+#   By Alan Hayward, 2006-2013
+#
+#   Uses gibbot
+#
+MULTI_ABOUT="multibot [v2.0, Alan Hayward, 2006-2013]"
+#
+##############################################################################
+
+
+##############################################################################
+#Source gibbot and override stuff
+
+BOTPATH=$(dirname $0)
+source $BOTPATH/gibbot >/dev/null
+
+NICK="multibot"
+MIN_NICK_SIZE=5
+
+list_add HALBot $IGNORELIST
+list_add lion $IGNORELIST
+list_add bugbot $IGNORELIST
+list_add crbot $IGNORELIST
+
+list_add "#chat" $CHANNELLIST
+list_add "#work" $CHANNELLIST
+list_add "#linux" $CHANNELLIST
+
+#People not to give ops to
+list_new
+NOOPSLIST=$?
+list_add HALBot $NOOPSLIST
+list_add lion $NOOPSLIST
+list_add bugbot $NOOPSLIST
+list_add crbot $NOOPSLIST
+list_add jim $NOOPSLIST
+
+#Channels not to give a greeting on
+list_new
+NOGREETLIST=$?
+list_add "#work" $NOGREETLIST
+
+#People on the naughtylist
+list_new
+NAUGHTYLIST=$?
+
+#Web links seen by the bot
+list_new
+HTTPLIST=$?
+
+unset HANGMANSTATE
+
+WHOIS_INSULT=""; WHOIS_INSULT_NICK=""
+WHOIS_OWNER=""; WHOIS_OWNER_NICK=""
+
+
+##############################################################################
+#Standard gibbot function overrides
+
+bot_private_message() #from, Original Message
+{
+  CHANNEL="PRIVATE"; PERSON=$1; shift
+
+  PREFIX=""
+  SPEAK="bot_person_say $PERSON"
+  DO="bot_person_action $PERSON"
+
+  parse $@
+}
+
+
+bot_channel_message() #channel, from, Original Message
+{
+  CHANNEL=$1; PERSON=$2; shift 2
+
+  PREFIX="$PERSON: "
+  SPEAK="bot_channel_say $CHANNEL"
+  DO="bot_channel_action $CHANNEL"
+
+  parse $@
+}
+
+
+bot_other_channel_message() #channel, from, Original Message
+{
+ CHANNEL=$1; PERSON=$2; shift 2
+
+ multi_repost_checker $@
+ multi_word_watcher "$@"
+ multi_naughty_checker $@
+}
+
+
+bot_exist() #person
+{
+  NAME=$1; shift
+
+  if [ -n "$WHOIS_INSULT" ]
+  then
+    #This function was called as a result of an insult request
+
+    #INSULT=$(insult -q)
+    INSULT=", you are a prize banana"
+
+    if [[ ${INSULT:0:1} = "," ]]
+    then
+      $WHOIS_INSULT "$NAME$INSULT"
+    else
+      $WHOIS_INSULT "$NAME $INSULT"
+    fi
+    WHOIS_INSULT=""; WHOIS_INSULT_NICK=""
+
+  elif [[ -n "$WHOIS_OWNER" && "$WHOIS_OWNER_NICK" = "$NAME" ]]
+  then
+    #This function was called as a result of an owner change request
+    $WHOIS_OWNER "I am changing owner to $NAME"
+    bot_person_say $REALOWNER "Owner changed to $NAME, using command: $WHOIS_OWNER"
+    WHOIS_OWNER=""; WHOIS_OWNER_NICK=""
+    OWNER=$NAME
+
+  fi
+}
+
+
+bot_not_exist()  #person
+{
+  if [ -n "$WHOIS_INSULT" ]
+  then
+    #This function was called as a result of an insult request
+    $WHOIS_INSULT "I cannot see $1"
+    WHOIS_INSULT=""
+
+  elif [ -n "$WHOIS_OWNER" ]
+  then
+    #This function was called as a result of an owner change request
+    $WHOIS_OWNER "I cannot see $1"
+    WHOIS_OWNER=""
+
+  fi
+}
+
+
+bot_kicked() #channel, by
+{
+  bot_channel_action $1 "shakes his fist at $2"
+  bot_kick $@ "Revenge is sweet!"
+}
+
+randGreeting()
+{
+  echo "Hello there $@"
+}
+
+bot_person_joined() #channel, person
+{
+  CHANNEL=$1
+  NAME=$2
+
+  #Try to give ops to the new person (unless on the list)
+  list_exists $NAME $NOOPSLIST
+  if [ $? -ne 1 ]
+  then
+    bot_op $CHANNEL $NAME
+  fi
+
+  #Say hello to them
+  list_exists "$CHANNEL" $NOGREETLIST
+  if [ $? -ne 1 -a $(random 15) -eq 0 ]
+  then
+    bot_channel_say $CHANNEL "$(randGreeting $NAME)"
+  fi
+}
+
+
+##############################################################################
+#The main multibot parser
+#
+#Multibot accepts different commands
+#The parser will be called when somebody speaks to him
+#
+
+parse() #message
+{
+  #Assumes $CHANNEL $PERSON $PREFIX $SPEAK and $DO are set up
+  MESSAGE="$@"
+
+  #Search for matching function
+  while [ -n "$1" ]
+  do
+    STR="$1"; shift
+    for FUNC in ${FUNCS[@]}
+    do
+      if [ "$STR" = "$FUNC" ]
+      then
+        #Remove anything that could break the script
+        STR=${@//;/}
+        STR=${STR//\!/}
+        STR=${STR//\(/}
+        STR=${STR//\{/}
+        STR=${STR//\//}
+        STR=${STR//\|/}
+        STR=${STR//\$/}
+        STR=${STR//\./}
+        STR=${STR//\*/}
+        multibot_$FUNC $STR
+        return
+      fi
+    done
+  done
+
+  #Search for a question
+  LEN=${#MESSAGE}
+  LASTCHAR=${MESSAGE:$LEN-1}
+  if [ "$LASTCHAR" = "?" ] #you are asking a question
+  then
+    #multibot_eight $MESSAGE
+    $SPEAK $PREFIX"I think you might be right about that"
+    return
+  fi
+
+  #Default, nothing matched.
+  #Commented out becuase this became annoying
+  #$SPEAK $PREFIX"You might want to ask me for help"
+}
+
+
+##############################################################################
+#Each specific action
+#For each function X in $FUNCS there should exist a function multibot_X
+#and multibot_help_X
+
+FUNCS=("dance" "date" "doughnut" "fortune" "greet" "hangman"
+       "help" "ignore" "insult" "latest" "owner" "naughty" "ping" "time" "admin" "about")
+
+multibot_about()
+{
+  $SPEAK $PREFIX"I am $MULTI_ABOUT. I am an extension of gibbot. I am written entirely in bash." 
+}
+
+multibot_help_about()
+{
+  multibot_about
+}
+
+multibot_dance()
+{
+  $DO "dances"
+}
+
+multibot_help_dance()
+{
+  $SPEAK $PREFIX"I'll dance."
+}
+
+multibot_doughnut()
+{
+  #$SPEAK $PREFIX"The next person on the doughnut rota is: $(doughnut)"   
+  $SPEAK $PREFIX"The next person on the doughnut rota is: Dave"
+}
+
+multibot_help_doughnut()
+{
+  $SPEAK $PREFIX"I'll tell you who is next on the doughnut rota" 
+}
+
+multibot_donut()
+{
+  multibot_doughnut $@
+}
+
+multibot_help_donut()
+{
+  multibot_help_doughnut $@
+}
+
+multibot_date()
+{
+ $SPEAK $PREFIX"$(date)"
+}
+
+multibot_help_date()
+{
+ $SPEAK $PREFIX"I'll tell you the full current date and time"
+}
+
+multibot_fortune()
+{
+  FORT=$(fortune -s)
+  $SPEAK $PREFIX$FORT
+}
+
+multibot_help_fortune()
+{
+  $SPEAK $PREFIX"I'll give you a fortune cookie."
+}
+
+multibot_greet()
+{
+  if [[ -z "$1"  || "$1" = "me" ]]
+  then
+    GREET=$(randGreeting $PERSON)
+  else
+    GREET=$(randGreeting $1)
+  fi
+
+  $SPEAK $PREFIX$GREET
+}
+
+multibot_help_greet()
+{
+  $SPEAK $PREFIX"I'll greet you, or, if you tell me a name, i'll greet them"   
+}
+
+multibot_hangman()
+{
+  if [ -z "$HANGMANSTATE" ]
+  then
+    BASEFILE="/tmp/.hangman."
+    GAMEFILE=$(mktemp $BASEFILE"XXXXXXX")
+    STATELINE="Game State: "
+    STATELINELEN=${#STATELINE}
+    ENDLINE="GAME OVER"
+    ENDLINELEN=${#ENDLINE}
+    unset GUESS
+    EXIT=0
+    
+    $SPEAK $PREFIX"Staring a new game"
+  else
+    GUESS="$@"
+  fi
+  
+  $BOTPATH/hangman $HANGMANSTATE $GUESS | while read line 
+  do
+    if [ "${line:0:$STATELINELEN}" = "$STATELINE" ]
+    then
+      HANGMANSTATE=${line#$STATELINE}
+      if [ $EXIT -eq 0 ]
+      then
+        echo $HANGMANSTATE > $GAMEFILE  #Otherwise we will loose the value of STATE
+      fi
+    else
+      $SPEAK $line
+      
+      if [ "${line:0:$ENDLINELEN}" = "$ENDLINE" ]
+      then
+        EXIT=1
+        rm $GAMEFILE
+      fi
+    fi
+  done
+  
+  if [ -f $GAMEFILE ]
+  then
+    HANGMANSTATE=$(cat $GAMEFILE) #Otherwise we will loose the value of STATE
+  else
+    unset HANGMANSTATE
+  fi
+}
+
+multibot_help_hangman()
+{
+ $SPEAK $PREFIX"I'll play hangman with you!"   
+}
+
+multibot_help()
+{
+  #Call the matching help function for the given command
+  
+  if [ -z "$1" ] #no args
+  then
+    $SPEAK $PREFIX"I understand: ${FUNCS[@]}"
+    $SPEAK $PREFIX"You can ask me for help about each one"
+    return
+  fi
+
+  #Search for matching function
+  STR=$1
+  for FUNC in ${FUNCS[@]}
+  do
+    if [ "$STR" = "$FUNC" ]
+    then
+      multibot_help_$FUNC
+      return
+    fi
+  done
+  $SPEAK $PREFIX"I don't know that command."  
+}
+
+multibot_help_help()
+{
+ $SPEAK $PREFIX"You can ask me about every command I know." 
+}
+
+multibot_ignore()
+{
+  if [ -z "$1" ] #no args
+  then
+    LIST=$(list_list $IGNORELIST)
+    $SPEAK $PREFIX"I am currently ignoring: $LIST"
+    return
+  fi
+
+  if [ $PERSON != $OWNER ] #only my owner can change the list
+  then
+    $SPEAK $PREFIX"Only $OWNER can change who I ignore."
+    multi_privilege_error ignore $@
+    return
+  fi
+
+  if [ $1 = $OWNER ] #never ignore the owner
+  then
+    $SPEAK $PREFIX"I wouldn't do that if I were you!"
+    return
+  fi
+
+  list_add $1 $IGNORELIST
+  if [ $? -eq 0 ]
+  then
+    #It failed, so person must already be ignored. Remove them instead
+    list_remove $1 $IGNORELIST
+  fi
+  $SPEAK $PREFIX"I am now ignoring: $(list_list $IGNORELIST)"
+}
+
+multibot_help_ignore()
+{
+ $SPEAK $PREFIX"I'll tell you who I'm ignoring."
+ $SPEAK $PREFIX"If you give me a name, I'll add or remove them from my list. Only $OWNER can do this."
+}
+
+multibot_insult()
+{
+  if [[ -z "$1"  || "$1" = "me" ]]
+  then
+    INSULT=$(insult -q)
+
+    if [[ ${INSULT:0:1} = "," ]]
+    then
+      $SPEAK $PERSON$INSULT
+    else
+      $SPEAK $PERSON $INSULT
+    fi
+    return
+  fi
+
+  if [[ "$1" = $OWNER && $OWNER != $PERSON ]]
+  then
+    $SPEAK $PREFIX"I wouldn't dream of insulting $1"
+    return
+  fi
+
+  if [[ ${1:0:$MIN_NICK_SIZE} = ${NICK:0:$MIN_NICK_SIZE} ]]
+  then
+    $SPEAK $PREFIX"$NICK is the best!"
+    return
+  fi
+
+  #perform a whois and then insult bot_exist or bot_not_exist
+  bot_whois $1
+  WHOIS_INSULT=$SPEAK
+  WHOIS_INSULT_NICK=$1
+}
+
+multibot_help_insult()
+{
+  $SPEAK $PREFIX"I'll insult you, or, if you tell me a name, i'll insult them" 
+}
+
+multibot_latest()
+{
+  #$SPEAK $PREFIX$(latest $@) 
+  $SPEAK $PREFIX"1.2.3"
+}
+
+multibot_help_latest()
+{
+  $SPEAK $PREFIX"Tell me a project. I'll tell you the latest baseline for it"   
+}
+
+multibot_naughty()
+{
+  $SPEAK $PREFIX"On my naughty list is: $(list_list $NAUGHTYLIST)"
+}
+
+multibot_help_naughty()
+{
+  $SPEAK $PREFIX"I'll tell you who is on my naughty list."
+}
+
+
+multibot_owner()
+{
+  if [ -z "$1" ] #no args
+  then
+    $SPEAK $PREFIX"My owner is $OWNER"
+    return
+  fi
+
+  if [[ $PERSON != $OWNER && $PERSON != $REALOWNER ]] #only my owner and the real owner can change the list
+  then
+    $SPEAK $PREFIX"I'm not letting you change my owner."
+    multi_privilege_error owner $@
+    return
+  fi
+
+  bot_whois $1
+  WHOIS_OWNER="$SPEAK $PREFIX"
+  WHOIS_OWNER_NICK=$1
+}
+
+multibot_help_owner()
+{
+ $SPEAK $PREFIX"I'll tell you who my owner is."
+ $SPEAK $PREFIX"If you give me a name, I'll change my owner to that. Only $OWNER can do this."
+}
+
+
+multibot_ping()
+{
+  if [ -z "$1" ] #no args
+  then
+    multibot_help_ping
+    return
+  fi
+  PING=$(ping -c 1 -W 5 $@ | $AWK '{if($2=="bytes")print $0}')
+  $SPEAK $PREFIX$PING
+}
+
+multibot_help_ping()
+{
+  $SPEAK $PREFIX"give me a host, and I'll ping it." 
+}
+
+multibot_time()
+{
+ $SPEAK $PREFIX"$(date +%H":"%M":"%S)"
+}
+
+multibot_help_time()
+{
+ $SPEAK $PREFIX"I'll tell you the current time"
+}
+
+
+multibot_admin()
+{
+  #Parse the input as one of the possible admin commands,
+  #then execute that
+  
+  if [ $PERSON != $OWNER ] #only my owner can do this
+  then
+    multibot_help_admin
+    multi_privilege_error admin $@
+    return
+  fi
+
+  if [ -z "$1" ] #no args
+  then
+    $SPEAK $PREFIX"What do you want to do? I understand: ${ADMINFUNCS[@]}"
+    return
+  fi
+
+  #Search for matching function
+  while [ -n "$1" ]
+  do
+    STR="$1"; shift
+    for FUNC in ${ADMINFUNCS[@]}
+    do
+      if [ "$STR" = "$FUNC" ]
+      then
+        multibot_admin_$FUNC "$@"
+        return
+      fi
+    done
+  done
+}
+
+multibot_help_admin()
+{
+  $SPEAK $PREFIX"Only my owner, $OWNER, can do this."
+}
+
+##############################################################################
+#Each specific admin action
+#For each function X in $ADMINFUNCS there should exist a function multibot_admin_X.
+#There are no help functions for admin actions
+#
+
+ADMINFUNCS=("do" "echo" "ex" "leave" "join" "list" "list_add"
+            "list_remove" "list_size" "rainbow" "colour" "say" "quit" )
+
+multibot_admin_do()
+{
+  #Make the bot do an action (needs the irc syntax after the ACTION)
+  #eg "#chat dance"
+  bot_channel_action $@
+}
+
+multibot_admin_echo()
+{
+ #Make the bot say something (needs irc syntax)
+ #eg "PRIVMSG #chat hello"
+  bot_echo $@
+}
+
+multibot_admin_ex()
+{
+  #run the given command, speak the output
+  #eg "ls"
+  $@ 2>&1 | while read l; do $SPEAK $PREFIX $l; done
+}
+
+multibot_admin_leave()
+{
+  #Leave a channel
+  bot_leave $1 "Bye"
+}
+
+multibot_admin_join()
+{
+  #Join a channel
+  bot_join $1
+}
+
+multibot_admin_list() #listnumber
+{
+  #for numerical input, list all the items in the list
+  for item in $(list_list $1)
+  do
+    $SPEAK $PREFIX $item
+    sleep 1
+  done
+}
+
+multibot_admin_list_add() #item, listnumber
+{
+  #add item to list
+  list_add $@
+  $SPEAK $PREFIX $(list_list $2)
+}
+
+multibot_admin_list_remove()
+{
+  #remove item from list
+  list_remove $@
+  $SPEAK $PREFIX $(list_list $2)
+}
+
+multibot_admin_list_size()
+{
+  #say size of list
+  $SPEAK $PREFIX $(list_size $1)
+}
+
+multibot_admin_say()
+{
+  #say given input (needs the irc syntax after the ACTION)
+  #eg "#chat hello" 
+  bot_channel_say $@
+}
+
+multibot_admin_rainbow()
+{
+  #say given input in rainbow words (needs the irc syntax after the ACTION)
+  #eg "#chat hello there" 
+  C="$1"
+  shift
+  bot_channel_say "$C" $(rainbowWord $@)
+}
+
+multibot_admin_colour()
+{
+  #say given input in a given colour (needs the irc syntax after the ACTION)
+  #Uses the colour codes in gibbot_utils
+  #eg "#chat 2 hello there" 
+  C="$1"
+  COL="$(printf $COLORCODE)$2"
+  shift; shift
+  bot_channel_say "$C" $(printf $COL) "$@"
+}
+
+multibot_admin_quit()
+{
+  bot_echo QUIT "ByeBye!"
+  exit
+}
+
+##############################################################################
+#Generic message checkers to check for patterns in put not directed to the bot
+#
+
+multi_repost_checker()
+{
+  #Check for repeated posts of internet links
+  while [ -n "$1" ]
+  do
+    is_a_link $1
+    if [ $? -eq 1 ]
+    then
+      list_add $1 $HTTPLIST #always try to add it as a link
+
+      if [ $? -eq 0 ] #couldn't add link becuase it already existed
+      then
+	bot_channel_say $CHANNEL "$FROM: Hey! That's a repost!"
+      fi
+    fi
+    shift
+  done
+}
+
+
+multi_naughty_checker()
+{
+  #Check for swearing
+  COUNT=$(echo $@ | tr [a-zA-Z] [za-yza-y] | egrep -c -i "etbj|btms|svzs|zqrd|ankknbj|ihyy|rghs|ohrr|bnbj|vzmj|rgzf" )
+
+  if [ $COUNT -gt 0 ]
+  then
+    list_add $FROM $NAUGHTYLIST
+    if [ $? -eq 1 ]
+    then
+      bot_channel_say $CHANNEL "$FROM: That's rude! I'm adding you to my naughty list."
+    else
+      bot_channel_say $CHANNEL "$FROM: I've already warned you about being rude!"
+    fi
+  fi
+}
+
+WORDSTOWATCH=("bob" "beer" "christmas")
+WORDSTOWATCHREPLY=("never-trust-anyone-called-bob" "did-someone-say-beer?" "Is-It-Christmas-yet?")
+
+multi_word_watcher()
+{
+  #Check for words from the watch list
+  for (( i=0; i<${#WORDSTOWATCH[@]}; i++ ))
+  do
+    if [ $(echo "$@" | egrep -c -i "${WORDSTOWATCH[$i]}" ) -gt 0 -a "$FROM" != "${WORDSTOWATCH[$i]}" ]
+    then
+      bot_channel_say $CHANNEL "$FROM: ${WORDSTOWATCHREPLY[i]//-/ }"
+      return
+    fi
+  done
+}
+
+
+##############################################################################
+#Privilege loggers
+
+multi_privilege_error() #message
+{
+  #Called when someone other than the owner tries to do something piviliged
+  bot_person_say $REALOWNER "$PERSON on $CHANNEL tried to do:" $@
+  bot_kick "$CHANNEL" "$PERSON" "multibot abuse"
+}
+
+
+##############################################################################
+#GO!
+
+bot_run $0 $@
+

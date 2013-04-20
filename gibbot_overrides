@@ -41,7 +41,7 @@ SSL_PORT=6697            #Port to connect to for ssl
 
 bot_init()
 {
-  return;
+  return
 }
 
 

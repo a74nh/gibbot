@@ -1,0 +1,245 @@
+#!/bin/bash
+
+##########################################################################
+# hangman
+# v2.0 By Alan Hayward
+#
+# Saved state hangman game. (Ideal for use in irc bots)
+#
+# 
+#
+#
+#  hangman  : create hangman game
+#  hangman -w solution : create hangman game with the word solution
+#
+#  hangman gameID  : show state of a game
+#  hangman gameID guess : Guess letter for a game
+#
+#
+#  Returns: 0 - game in progress
+#           1 - game finished (won or lost)
+##########################################################################
+
+
+##############################################################################
+##Defaults
+
+usage()
+{
+  echo "Usage: hangman [-w word]"
+  echo "       hangman [gameID] [guess]"
+}
+
+EXITVALUE=0
+UNKNOWNCHAR="_"
+NEWGAME=0
+NEWWORD=0
+unset $DEBUG
+
+NOOSE="[-O-<-<"
+LIVES=${#NOOSE}
+
+##############################################################################
+##Deal with command line
+
+if [ $# -eq 0 ]
+then
+  #No args, start a new game and pick a word
+  NEWGAME=1
+  
+  SYSTEM_WORDFILE=/usr/share/dict/words
+  
+  WORDFILE=$(mktemp)
+  egrep "^[a-z]+$" $SYSTEM_WORDFILE > $WORDFILE
+  
+  COUNT=$(wc -l $WORDFILE | cut -d" " -f 1)
+  
+  #Find a word (no capital letters please)
+  WORDRAW="."
+  while [ "$WORDRAW" != "$WORD" -a ${#WORDRAW} -lt 3  ]
+  do
+    WORDNUM=$((($RANDOM * $COUNT / 32767)+1))
+    WORDRAW=$(awk -v num=$WORDNUM '{x++; if(x==num) print $0; }' $WORDFILE)
+    WORD=$(echo $WORDRAW | tr [:upper:] [:lower:])
+  done
+  
+  rm $WORDFILE
+
+else
+
+  while getopts wd? line
+  do
+       case $line in
+       w) NEWWORD=1;;
+       d) DEBUG=1;;
+       *) usage; exit 2;;
+       esac
+  done
+  shift `expr $OPTIND - 1`
+
+  if [ $NEWWORD -eq 1 ]
+  then
+    WORD=$(echo "$@"| tr [:upper:] [:lower:])
+    NEWGAME=1
+  else
+    GAMEID=$1; shift
+    GUESS=$1
+  fi
+
+fi
+
+
+##############################################################################
+##load_state
+
+load_state()
+{
+  GAMEIDLIST=$GAMEID
+
+  for (( i=${#GAMEIDLIST}-1; i>=0; i-- ))
+  do
+    GAMEIDLIST=${GAMEIDLIST:0:i}$(echo ${GAMEIDLIST:i} | tr 1-9a-z a-z1-9 )
+  done
+  GAMEIDLIST=$(echo $GAMEIDLIST | tr 2 $UNKNOWNCHAR)
+  GAMEIDLIST=(${GAMEIDLIST//1/\ })
+  
+  WORD="${GAMEIDLIST[0]}"
+  CURRENTWORD="${GAMEIDLIST[1]}"
+  WRONGGUESSES="${GAMEIDLIST[2]}"
+}
+
+
+##############################################################################
+##save_state
+
+save_state()
+{
+  GAMEID=$WORD"1"$CURRENTWORD"1"$WRONGGUESSES"1111"
+  GAMEID=$(echo $GAMEID | tr $UNKNOWNCHAR 2)
+  for (( i=0; i<${#GAMEID}; i++ ))
+  do
+    GAMEID=${GAMEID:0:i}$(echo ${GAMEID:i} | tr a-z1-9 1-9a-z )
+  done
+  
+  echo "Game State: $GAMEID"
+}
+
+
+##############################################################################
+##new_game
+
+new_game()
+{
+  unset WRONGGUESSES
+  CURRENTWORD=$(echo $WORD | tr [:alpha:] $UNKNOWNCHAR)
+}
+
+
+##############################################################################
+##check_for_win
+
+check_for_win()
+{
+  if [ $(echo $CURRENTWORD | grep -c $UNKNOWNCHAR) -eq 0 ]
+  then
+    echo "GAME OVER. YOU WIN. WELL DONE!"
+    EXITVALUE=1
+    end_game
+  fi
+}
+
+##############################################################################
+##check_for_lose
+
+check_for_lose()
+{
+  if [ ${#WRONGGUESSES} -ge $LIVES ]
+  then
+    echo "GAME OVER. YOU LOSE. CORRECT ANSWER: $WORD"
+    EXITVALUE=1
+    end_game
+  fi
+}
+
+##############################################################################
+##continue_game
+
+continue_game()
+{
+  if [ ${#GUESS} -gt 1 ]
+  then
+    echo "Guess $GUESS is invalid"
+    return
+  fi
+  
+  if [ $(echo $CURRENTWORD | grep -c $GUESS) -gt 0 -o $(echo $WRONGGUESSES | grep -c $GUESS) -gt 0 ]
+  then
+    echo "Guess $GUESS has been used"
+    return
+  fi
+  
+  FOUND=$(echo $WORD | grep -c $GUESS)
+  
+  if [ $FOUND -gt 0 ]
+  then
+  
+    x=0
+    while [ $x -lt ${#WORD} ]
+    do
+      if [ "${WORD:$x:1}" = "$GUESS" ]
+      then
+        CURRENTWORD=${CURRENTWORD:0:x}$GUESS${CURRENTWORD:x+1}
+      fi
+      x=$((x+1))
+    done
+    check_for_win
+
+  else
+    WRONGGUESSES=$WRONGGUESSES$GUESS
+    check_for_lose
+  fi
+}
+
+
+
+##############################################################################
+##end_game
+
+end_game()
+{
+  NUMWRONG=${#WRONGGUESSES}
+    
+  echo "$CURRENTWORD / Wrong Guesses: $WRONGGUESSES / ${NOOSE:0:NUMWRONG}"
+
+  save_state
+
+  if [ "$DEBUG" ]
+  then
+    echo
+    echo "DEBUG: $WORD" 
+  fi
+  
+  exit $EXITVALUE
+}
+
+
+##############################################################################
+##main loop
+
+if [ $NEWGAME -eq 1 ]
+then
+  new_game
+
+else
+  load_state
+  check_for_lose
+  check_for_win
+
+  if [ -n "$GUESS" ]
+  then
+    continue_game
+  fi
+  
+fi
+
+end_game

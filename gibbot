@@ -26,9 +26,8 @@ then
   exit 2
 fi
 
-unset UNIQUE;
-BOT_CONNECTED=0;
-REALOWNER=$(whoami); #privilaged irc user
+unset UNIQUE
+REALOWNER=$(whoami) #privilaged irc user
 source $BOTPATH/gibbot_interface >/dev/null
 source $BOTPATH/gibbot_utils >/dev/null
 source $BOTPATH/gibbot_overrides >/dev/null
@@ -40,8 +39,8 @@ list_new; IGNORELIST=$?
 ################################################################################
 ##OS/machine specific stuff
 
-MACHINE=`uname -m`;
-AWK=awk;
+MACHINE=`uname -m`
+AWK=awk
 
 case $MACHINE in
   sun4u) AWK=nawk;;
@@ -107,7 +106,7 @@ bot_parse() #input
     FROM=${FROM:1}
 
     #Am I ignoring you??
-    list_exists $FROM $IGNORELIST;
+    list_exists $FROM $IGNORELIST
     if [ $? -eq 1 ]
     then
       return
@@ -123,13 +122,13 @@ bot_parse() #input
         #Channel message started with name of bot
 	
         #Remove the trailing 0x1 from the end of the message
-        shift 4; MESSAGE="$@"; LEN=${#MESSAGE};
+        shift 4; MESSAGE="$@"; LEN=${#MESSAGE}
         
         if [ $LEN -lt 1 ] 
         then
           LEN=1
         fi
-        MESSAGE=${MESSAGE:0:$LEN-1};
+        MESSAGE=${MESSAGE:0:$LEN-1}
         
 	bot_log_input $LOG_LEVEL_BOT $CHANNEL	
         bot_channel_message $CHANNEL $FROM $MESSAGE
@@ -138,7 +137,7 @@ bot_parse() #input
         #Channel message did not start with name of bot
       
         #Remove the : from the start and the trailing 0x1 from the end of the message
-        shift 3; MESSAGE="$@"; LEN=${#MESSAGE}; MESSAGE=${MESSAGE:1:$LEN-2};
+        shift 3; MESSAGE="$@"; LEN=${#MESSAGE}; MESSAGE=${MESSAGE:1:$LEN-2}
 
         bot_log_input $LOG_LEVEL_ALL $CHANNEL	
         bot_other_channel_message $CHANNEL $FROM $FIRSTWORD $MESSAGE
@@ -148,7 +147,7 @@ bot_parse() #input
       #Message was sent privately
     
       #Remove the : from the start and the trailing 0x1 from the end of the message
-      shift 3; MESSAGE="$@"; LEN=${#MESSAGE}; MESSAGE=${MESSAGE:1:$LEN-2};
+      shift 3; MESSAGE="$@"; LEN=${#MESSAGE}; MESSAGE=${MESSAGE:1:$LEN-2}
 
       bot_log_input $LOG_LEVEL_BOT private
       bot_private_message $FROM $MESSAGE
@@ -166,7 +165,7 @@ bot_parse() #input
     #now join all the channels
     for CHANNEL in $(list_list $CHANNELLIST)
     do
-      bot_join $CHANNEL
+      bot_direct_join $CHANNEL
     done
 
   elif [ "$2" = "311" ] #first line of whois reply pass
@@ -184,7 +183,7 @@ bot_parse() #input
     bot_log_input $LOG_LEVEL_SYSTEM console
     FROM=${1%\!*}
     FROM=${FROM:1}
-    bot_join "$3" #rejoin channel
+    bot_direct_join "$3" #rejoin channel
     bot_kicked "$3" $FROM
 
   elif [ "$2" = "JOIN" ]
@@ -199,10 +198,10 @@ bot_parse() #input
     if [ $FROM = $NICK ]
     then
       #Bot just joined a channel
-      bot_joined $CHANNEL;
+      bot_joined $CHANNEL
     else
       #Someone else just joined a channel
-      bot_person_joined $CHANNEL $FROM;
+      bot_person_joined $CHANNEL $FROM
     fi
 
   else
